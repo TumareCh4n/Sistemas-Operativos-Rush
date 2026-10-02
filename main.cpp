@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 using namespace std;
@@ -52,7 +53,40 @@ class Actividades{
        cout << "Dependencias : " <<Dependencias;
        }};
 
-main(){
+int Random() { // Esto para los milisegundos si no aparecen
+       return rand() % (5000 - 100 + 1) + 100;
+}
+
+void LeerArchivo(string nombre_archivo, vector<Actividades> &actividades) {
+        
+        while (getline (planes, nombre_actividad)) {
+    stringstream ss(linea);
+
+    string id;
+    string nombre;
+    string tiempo;
+    string dependencias;
+
+    getline(ss, id, ':');
+    getline(ss, nombre, ':');
+    getline(ss, tiempo, ':');
+    getline(ss, dependencias, ':');
+
+    cout << "ID: " << id << endl; //Estos pa ver si se esta leyendo bien el archivo, lo quitamos al final
+    cout << "Nombre: " << nombre << endl;
+    cout << "Tiempo: " << tiempo << endl;
+    cout << "Dependencias: " << dependencias << endl;
+
+    cout << "ID (int): " << id_int << endl;
+    cout << "Tiempo (int): " << tiempo_int << endl;
+
+    Actividades actividad(nombre, id_int, tiempo_int, dependencias);
+    actividades.push_back(actividad);
+
+        }
+    }
+
+int main(){
     ifstream planes("plan.txt");
     if(!planes.is_open()){
         cout << "No se pudo abrir el plan manito, seguro lo escribiste bien?" << endl;

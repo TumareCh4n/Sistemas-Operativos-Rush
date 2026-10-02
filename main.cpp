@@ -57,20 +57,26 @@ int Random() { // Esto para los milisegundos si no aparecen
        return rand() % (5000 - 100 + 1) + 100;
 }
 
-void LeerArchivo(string nombre_archivo, vector<Actividades> &actividades) {
-        
-        while (getline (planes, nombre_actividad)) {
-    stringstream ss(linea);
+void LeerArchivo(ifstream &archivo, vector<Actividades> &actividades) {
 
-    string id;
-    string nombre;
-    string tiempo;
-    string dependencias;
+    string linea;
 
-    getline(ss, id, ':');
-    getline(ss, nombre, ':');
-    getline(ss, tiempo, ':');
-    getline(ss, dependencias, ':');
+    while (getline(archivo, linea)) {
+
+        stringstream ss(linea);
+
+        string id;
+        string nombre;
+        string tiempo;
+        string dependencias;
+
+        getline(ss, id, ':');
+        getline(ss, nombre, ':');
+        getline(ss, tiempo, ':');
+        getline(ss, dependencias, ':');
+
+        int id_actividad = stoi(id);
+        int tiempo_actividad = stoi(tiempo);
 
     cout << "ID: " << id << endl; //Estos pa ver si se esta leyendo bien el archivo, lo quitamos al final
     cout << "Nombre: " << nombre << endl;
@@ -81,6 +87,7 @@ void LeerArchivo(string nombre_archivo, vector<Actividades> &actividades) {
     cout << "Tiempo (int): " << tiempo_int << endl;
 
     Actividades actividad(nombre, id_int, tiempo_int, dependencias);
+    
     actividades.push_back(actividad);
 
         }
@@ -93,12 +100,14 @@ int main(){
         return 1;
     }
 
-    string nombre_actividad;
-    while(getline(planes, nombre_actividad)){
-        cout << "Nombre de la actividad: " << nombre_actividad << endl;
-    }
-
-
+    vector<Actividades> actividades;
+    LeerArchivo(planes, actividades);
     planes.close();
+
+    for(Actividades &actividad : actividades){
+        actividad.PrintWeas();
+        cout << "------UwU------" << endl;   
+    }
+    
     return 0;
 }

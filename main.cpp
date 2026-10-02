@@ -47,14 +47,25 @@ class Actividades{
        }
 
        void PrintWeas() {
-       cout << "Nombre_Actividad : " <<Nombre_Actividad;
-       cout << "Id_Actividad : " <<Id_Actividad;
-       cout << "Tiempo : " <<Tiempo;
-       cout << "Dependencias : " <<Dependencias;
+       cout << " Nombre_Actividad : " <<Nombre_Actividad << endl;
+       cout << " Id_Actividad : " <<Id_Actividad << endl;
+       cout << " Tiempo : " <<Tiempo << endl;
+       cout << " Dependencias : " <<Dependencias << endl;
        }};
 
 int Random() { // Esto para los milisegundos si no aparecen
        return rand() % (5000 - 100 + 1) + 100;
+}
+
+string quitarespaciosinador(string wea){
+    size_t inicio = wea.find_first_not_of(" \t");
+
+    if(inicio ==string::npos){
+        return "";
+    }
+
+    size_t fin = wea.find_last_not_of(" \t");
+    return wea.substr(inicio, fin - inicio + 1);
 }
 
 void LeerArchivo(ifstream &archivo, vector<Actividades> &actividades) {
@@ -62,6 +73,10 @@ void LeerArchivo(ifstream &archivo, vector<Actividades> &actividades) {
     string linea;
 
     while (getline(archivo, linea)) {
+
+        if(quitarespaciosinador(linea).empty()){
+            continue;
+        }
 
         stringstream ss(linea);
 
@@ -75,23 +90,29 @@ void LeerArchivo(ifstream &archivo, vector<Actividades> &actividades) {
         getline(ss, tiempo, ':');
         getline(ss, dependencias, ':');
 
-        int id_actividad = stoi(id);
-        int tiempo_actividad = stoi(tiempo);
+        id = quitarespaciosinador(id);
+        nombre = quitarespaciosinador(nombre);
+        tiempo = quitarespaciosinador(tiempo);
+        dependencias = quitarespaciosinador(dependencias);
 
-    cout << "ID: " << id << endl; //Estos pa ver si se esta leyendo bien el archivo, lo quitamos al final
-    cout << "Nombre: " << nombre << endl;
-    cout << "Tiempo: " << tiempo << endl;
-    cout << "Dependencias: " << dependencias << endl;
+        int id_actividad = stoi(id); //si no pongo el stoi me tira error, así que mejor lo dejo xD
+        int tiempo_actividad = 0;
 
-    cout << "ID (int): " << id_int << endl;
-    cout << "Tiempo (int): " << tiempo_int << endl;
+        if (tiempo.empty()) {
+        tiempo_actividad = Random();
+        }else{
+        tiempo_actividad = stoi(tiempo); //ah coño, claro, el texto es string, makes sense
+    }
 
-    Actividades actividad(nombre, id_int, tiempo_int, dependencias);
+    Actividades actividad(nombre, id_actividad, tiempo_actividad, dependencias);
     
     actividades.push_back(actividad);
 
         }
     }
+
+
+
 
 int main(){
     ifstream planes("plan.txt");
@@ -105,9 +126,10 @@ int main(){
     planes.close();
 
     for(Actividades &actividad : actividades){
+        cout << endl << "------UwU------" << endl;   
         actividad.PrintWeas();
-        cout << "------UwU------" << endl;   
+        
     }
-    
+
     return 0;
 }

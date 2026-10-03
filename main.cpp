@@ -5,6 +5,10 @@
 #include <vector>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <cstring>
+#include <ctime>
+#include <csignal>
+#include <cerrno>
 using namespace std;
 
 enum class Estado {
@@ -151,13 +155,10 @@ void LeerArchivo(ifstream &archivo, vector<Actividades> &actividades) {
             tiempo_actividad = stoi(tiempo); //ah coño, claro, el texto es string, makes sense
         }
 
-        // Convertir dependencias de string a vector<int>
         vector<int> dependencias_actividad = desglosardependenciasinador(dependencias);
 
-        // Crear actividad
         Actividades actividad(nombre, id_actividad, tiempo_actividad, dependencias_actividad);
 
-        // Guardarla en el vector
         actividades.push_back(actividad);
     }
 }
@@ -171,6 +172,27 @@ int BuscarActividadPorId(const vector<Actividades> &actividades, int id) {
         }
     }
     return -1; // No encontrada
+}
+
+
+vector<int> ritualinverso(vector<Actividades> &actividades, int idActividad){
+
+    vector<int> dependientes;
+
+    for(Actividades &actividad : actividades){
+
+        vector<int> dependencias = actividad.GetDependencias();
+
+        for(int dependencia : dependencias){
+
+            if(dependencia == idActividad){
+                dependientes.push_back(actividad.GetId_Actividad());
+                break;
+            }
+        }
+    }
+
+    return dependientes;
 }
 
 bool Estalisteilor(Actividades &actividad, vector<Actividades> &actividades) {
@@ -192,96 +214,508 @@ bool Estalisteilor(Actividades &actividad, vector<Actividades> &actividades) {
     return true; // Todas las dependencias encontradas
 }
 
-void ExpansionDeDominio(Actividades &actividad) {
-    pid_t pid = fork();
-    if (pid == -1) {
-        cout << "Error al crear el proceso de la actividad " << actividad.GetNombre_Actividad() << endl;
-        return;
+
+struct ListaProcesosActivos{
+    pid_t pid;
+    int idActividad;
+    int pipeLectura;
+};
+
+
+struct PipesActividades{
+    int idOrigen;
+    int idDestino;
+    int pipeLectura;
+    int pipeEscritura;
+};
+
+
+
+
+vector<PipesActividades> CrearPipes(vector<Actividades> &actividades){
+
+    vector<PipesActividades> pipes;
+
+    for(Actividades &actividad : actividades){
+
+        vector<int> dependientes =
+            ritualinverso(actividades, actividad.GetId_Actividad());
+
+        for(int idDependiente : dependientes){
+
+            int tuberia[2];
+
+            if(pipe(tuberia) == -1){
+                cout << "Error al crear pipe entre actividades "
+                     << actividad.GetId_Actividad()
+                     << " y "
+                     << idDependiente
+                     << endl;
+                continue;
+            }
+
+            PipesActividades conexion;
+
+            conexion.idOrigen = actividad.GetId_Actividad();
+            conexion.idDestino = idDependiente;
+            conexion.pipeLectura = tuberia[0];
+            conexion.pipeEscritura = tuberia[1];
+
+            pipes.push_back(conexion);
+        }
     }
 
-    if (pid == 0) {
-    actividad.SetEstado_Actividad(Estado::Dandole);
-    cout << "se expandió la Actividad " << actividad.GetNombre_Actividad() << " (ID: " << actividad.GetId_Actividad() << ") con teempo de ejecución: " << actividad.GetTiempo() << " ms" << endl;
-    usleep(actividad.GetTiempo() * 1000); //
+    return pipes;
+}
 
-    cout << "Actividad " << actividad.GetNombre_Actividad() << " (ID: " << actividad.GetId_Actividad() << ") ha sido finiquitadisima (en el hijo!)." << endl;
-    actividad.SetEstado_Actividad(Estado::Finiquitao);
-    _exit(0); // nigerun dayoo
-    }else{
+
+vector<PipesActividades> BuscarPipesDeOrigen(
+    vector<PipesActividades> &pipes,
+    int idActividad
+){
+
+    vector<PipesActividades> pipesOrigen;
+
+    for(PipesActividades &conexion : pipes){
+
+        if(conexion.idOrigen == idActividad){
+            pipesOrigen.push_back(conexion);
+        }
+    }
+
+    return pipesOrigen;
+}
+
+
+vector<PipesActividades> BuscarPipesDeDestino(
+    vector<PipesActividades> &pipes,
+    int idActividad
+){
+
+    vector<PipesActividades> pipesDestino;
+
+    for(PipesActividades &conexion : pipes){
+
+        if(conexion.idDestino == idActividad){
+            pipesDestino.push_back(conexion);
+        }
+    }
+
+    return pipesDestino;
+}
+
+
+int BuscarProcesoActivo(vector<ListaProcesosActivos> &procesos, pid_t pid) {
+    for (int i = 0; i < (int)procesos.size(); ++i) {
+        if (procesos[i].pid == pid) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+
+
+
+pid_t ExpansionDeDominio(
+    Actividades &actividad,
+    int &pipeLectura,
+    vector<PipesActividades> &pipesEntrada,
+    vector<PipesActividades> &pipesSalida
+){
+
+    int tuberia[2];
+
+    if(pipe(tuberia) == -1){
+        cout << "Error al crear el pipe de la actividad "
+             << actividad.GetNombre_Actividad() << endl;
+        return -1;
+    }
+
+    pid_t pid = fork();
+
+    if(pid == -1){
+        cout << "Error al crear el proceso de la actividad "
+             << actividad.GetNombre_Actividad() << endl;
+        return -1;
+    }
+
+    
+if(pid == 0){
+
+
+    signal(SIGINT, SIG_DFL);
+
+    close(tuberia[0]);
+
+
+    for(PipesActividades &conexion : pipesEntrada){
+
+        char mensaje[100];
+
+        read(
+            conexion.pipeLectura,
+            mensaje,
+            sizeof(mensaje)
+        );
+
+        cout << "Actividad "
+             << actividad.GetId_Actividad()
+             << " recibió: "
+             << mensaje
+             << " desde actividad "
+             << conexion.idOrigen
+             << endl;
+    }
+
+    cout << "se expandió la Actividad "
+         << actividad.GetNombre_Actividad()
+         << " (ID: " << actividad.GetId_Actividad()
+         << ") con teempo de ejecución: "
+         << actividad.GetTiempo() << " ms" << endl;
+
+    usleep(actividad.GetTiempo() * 1000);
+
+    const char* mensaje = "TERMINADA";
+
+    write(tuberia[1], mensaje, strlen(mensaje) + 1);
+
+    for(PipesActividades &conexion : pipesSalida){
+
+        write(
+            conexion.pipeEscritura,
+            mensaje,
+            strlen(mensaje) + 1
+        );
+    }
+
+    close(tuberia[1]);
+
+    _exit(0);
+}
+
+
+    else {
+
+        close(tuberia[1]);
+
+        pipeLectura = tuberia[0];
+
         actividad.SetEstado_Actividad(Estado::Dandole);
-        waitpid(pid, nullptr, 0);
-        actividad.SetEstado_Actividad(Estado::Finiquitao);
-        cout << "Actividad " << actividad.GetNombre_Actividad() << " (ID: " << actividad.GetId_Actividad() << ") ha sido finiquitadisima (en el padre!)." << endl;
 
+        return pid;
     }
 }
 
-void VacioInfinito(vector<Actividades> &actividades){
-    bool quedanactividades = true;
 
-    while(quedanactividades){
-        quedanactividades = false;
-        for(Actividades &actividad : actividades){
 
-            if(actividad.GetEstado_Actividad() == Estado::Calmao && Estalisteilor(actividad, actividades)){
-                ExpansionDeDominio(actividad);
-                quedanactividades = true;
+
+volatile sig_atomic_t seremiLlego = 0;
+
+void ManejadorSeremi(int senal){
+    (void)senal;
+    seremiLlego = 1;
+}
+
+
+void PurgaDeLaRama(vector<Actividades> &actividades, int idFallida){
+
+    vector<int> porRevisar;
+    porRevisar.push_back(idFallida);
+
+    while(!porRevisar.empty()){
+
+        int idActual = porRevisar.back();
+        porRevisar.pop_back();
+
+        vector<int> dependientes = ritualinverso(actividades, idActual);
+
+        for(int idDependiente : dependientes){
+
+            int posicion = BuscarActividadPorId(actividades, idDependiente);
+
+            if(posicion != -1 &&
+               actividades[posicion].GetEstado_Actividad() == Estado::Calmao){
+
+                actividades[posicion].SetEstado_Actividad(Estado::Aborto);
+
+                cout << "Actividad "
+                     << actividades[posicion].GetNombre_Actividad()
+                     << " (ID: " << idDependiente
+                     << ") abortada porque dependía de la actividad "
+                     << idActual << endl;
+
+                porRevisar.push_back(idDependiente);
             }
         }
     }
 }
 
-int main(){
-    ifstream planes("plan.txt");
+
+void VacioInfinito(vector<Actividades> &actividades, int K, vector<PipesActividades> &pipes){
+
+    vector<ListaProcesosActivos> procesosActivos;
+
+    while(true){
+
+        if(seremiLlego){
+
+            cout << endl << "!!! LLEGÓ LA SEREMI !!! Abortando todas las actividades..." << endl;
+
+            for(ListaProcesosActivos &proceso : procesosActivos){
+
+                kill(proceso.pid, SIGTERM);
+                waitpid(proceso.pid, nullptr, 0);
+                close(proceso.pipeLectura);
+
+                int posicionActividad =
+                    BuscarActividadPorId(actividades, proceso.idActividad);
+
+                if(posicionActividad != -1){
+                    actividades[posicionActividad].SetEstado_Actividad(Estado::Aborto);
+                    cout << "Actividad "
+                         << actividades[posicionActividad].GetNombre_Actividad()
+                         << " (ID: " << proceso.idActividad
+                         << ") abortada por la Seremi." << endl;
+                }
+            }
+            procesosActivos.clear();
+
+            for(Actividades &actividad : actividades){
+                if(actividad.GetEstado_Actividad() == Estado::Calmao){
+                    actividad.SetEstado_Actividad(Estado::Aborto);
+                }
+            }
+            return;
+        }
+
+        for(Actividades &actividad : actividades){
+
+            if(seremiLlego || (int)procesosActivos.size() >= K){
+                break;
+            }
+
+            if(actividad.GetEstado_Actividad() == Estado::Calmao &&
+               Estalisteilor(actividad, actividades)){
+
+                int pipeLectura;
+
+                vector<PipesActividades> pipesEntrada =
+                    BuscarPipesDeDestino(pipes, actividad.GetId_Actividad());
+
+                vector<PipesActividades> pipesSalida =
+                    BuscarPipesDeOrigen(pipes, actividad.GetId_Actividad());
+
+                pid_t pid = ExpansionDeDominio(
+                    actividad,
+                    pipeLectura,
+                    pipesEntrada,
+                    pipesSalida
+                );
+
+                if(pid != -1){
+                    ListaProcesosActivos proceso;
+                    proceso.pid = pid;
+                    proceso.idActividad = actividad.GetId_Actividad();
+                    proceso.pipeLectura = pipeLectura;
+                    procesosActivos.push_back(proceso);
+                }
+                else{
+                    actividad.SetEstado_Actividad(Estado::Aborto);
+                    PurgaDeLaRama(actividades, actividad.GetId_Actividad());
+                }
+            }
+        }
+
+        if(seremiLlego){
+            continue;
+        }
+
+        if(procesosActivos.empty()){
+            break;
+        }
+
+        int status = 0;
+        pid_t pidTerminado = waitpid(-1, &status, 0);
+
+        if(pidTerminado == -1){
+            if(errno == EINTR){
+                continue;
+            }
+            break;
+        }
+
+        if(WIFSIGNALED(status) && WTERMSIG(status) == SIGINT){
+            seremiLlego = 1;
+        }
+        if(seremiLlego){
+            continue;
+        }
+
+        int posicion = BuscarProcesoActivo(procesosActivos, pidTerminado);
+
+        if(posicion == -1){
+            continue;
+        }
+
+        int idActividad = procesosActivos[posicion].idActividad;
+        int pipeLectura = procesosActivos[posicion].pipeLectura;
+
+        procesosActivos.erase(procesosActivos.begin() + posicion);
+
+        bool salioBien = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+
+        char mensaje[100] = {0};
+        ssize_t leidos = 0;
+
+        if(salioBien){
+            leidos = read(pipeLectura, mensaje, sizeof(mensaje) - 1);
+        }
+        close(pipeLectura);
+
+        int posicionActividad = BuscarActividadPorId(actividades, idActividad);
+
+        if(posicionActividad == -1){
+            continue;
+        }
+
+        if(salioBien){
+
+            if(leidos > 0){
+                cout << "Mensaje recibido por pipe: " << mensaje << endl;
+            }
+
+            actividades[posicionActividad].SetEstado_Actividad(Estado::Finiquitao);
+
+            cout << "Actividad "
+                 << actividades[posicionActividad].GetNombre_Actividad()
+                 << " (ID: " << idActividad
+                 << ") ha sido finiquitadisima (en el padre!)."
+                 << endl;
+        }
+        else{
+
+            actividades[posicionActividad].SetEstado_Actividad(Estado::Aborto);
+
+            cout << "Actividad "
+                 << actividades[posicionActividad].GetNombre_Actividad()
+                 << " (ID: " << idActividad
+                 << ") se cayó (en el padre!), abortando su rama."
+                 << endl;
+
+            PurgaDeLaRama(actividades, idActividad);
+        }
+    }
+
+    for(Actividades &actividad : actividades){
+        if(actividad.GetEstado_Actividad() == Estado::Calmao){
+            actividad.SetEstado_Actividad(Estado::Aborto);
+            cout << "Actividad "
+                 << actividad.GetNombre_Actividad()
+                 << " (ID: " << actividad.GetId_Actividad()
+                 << ") nunca pudo ejecutarse (dependencia inexistente o ciclo)." << endl;
+        }
+    }
+}
+
+
+
+
+int main(int argc, char **argv) {
+
+    if(argc != 3){
+        cout << "se supone que tienes que poner: ./planificador + el archivo + K" << endl;
+        return 1;
+    }
+
+    ifstream planes(argv[1]);
+
     if(!planes.is_open()){
         cout << "No se pudo abrir el plan manito, seguro lo escribiste bien?" << endl;
         return 1;
     }
 
-    vector<Actividades> actividades;
-    LeerArchivo(planes, actividades);
-    planes.close();
+    int K = 0;
 
-    for(Actividades &actividad : actividades){
-        cout << endl << "------UwU------" << endl;   
-        actividad.PrintWeas();
-        
+    try{
+        K = stoi(argv[2]);
+    }
+    catch(const exception &e){
+        cout << "K tiene que ser un número entero, no '" << argv[2] << "'" << endl;
+        return 1;
     }
 
-    cout << endl;
+    if(K <= 0){
+        cout << "K tiene que ser mayor que 0" << endl;
+        return 1;
+    }
 
-cout << "===== PRUEBA FORK v: 1.0 =====" << endl;
+    srand(time(nullptr));
 
-pid_t pid = fork();
+    vector<Actividades> actividades;
 
-if (pid == -1) {
-    cout << "Error al crear el proceso hijo." << endl;
-    return 1;
-}
+    try{
+        LeerArchivo(planes, actividades);
+    }
+    catch(const exception &e){
+        cout << "El plan tiene una línea mal escrita (ID o tiempo no numérico)" << endl;
+        planes.close();
+        return 1;
+    }
+    planes.close();
 
-if (pid == 0) {
+    if(actividades.empty()){
+        cout << "El plan está vacío, no hay nada que celebrar" << endl;
+        return 1;
+    }
 
-    cout << "Soy el proceso hijo." << endl;
-    cout << "Mi PID es: " << getpid() << endl;
+    vector<PipesActividades> pipes = CrearPipes(actividades);
 
-    return 0;
+    struct sigaction accion;
+    memset(&accion, 0, sizeof(accion));
+    accion.sa_handler = ManejadorSeremi;
+    sigemptyset(&accion.sa_mask);
+    accion.sa_flags = 0;
+    sigaction(SIGINT, &accion, nullptr);
 
-} else {
+    cout << "===== EJECUTANDO PLAN (" << actividades.size()
+         << " actividades, K = " << K << ") =====" << endl;
 
-    cout << "Soy el proceso padre." << endl;
-    cout << "Mi PID es: " << getpid() << endl;
-    cout << "El PID de mi hijo es: " << pid << endl;
+    VacioInfinito(actividades, K, pipes);
 
-    waitpid(pid, nullptr, 0);
+    for(PipesActividades &conexion : pipes){
+        close(conexion.pipeLectura);
+        close(conexion.pipeEscritura);
+    }
 
-    cout << "El proceso hijo ha terminao." << endl;
-}
+    int finalizadas = 0;
+    int abortadas = 0;
+    int pendientes = 0;
 
-cout << endl;
-cout << "===== EJECUTANDO ACTIVIDAD =====" << endl;
+    for(Actividades &actividad : actividades){
 
-VacioInfinito(actividades);
+        Estado estado = actividad.GetEstado_Actividad();
 
+        if(estado == Estado::Finiquitao){
+            finalizadas++;
+        }
+        else if(estado == Estado::Aborto){
+            abortadas++;
+        }
+        else{
+            pendientes++;
+        }
+    }
+
+    cout << endl << "===== RESUMEN =====" << endl;
+    cout << "Finalizadas: " << finalizadas << endl;
+    cout << "Abortadas:   " << abortadas << endl;
+    cout << "Pendientes:  " << pendientes << endl;
+
+    if(seremiLlego){
+        return 130;
+    }
 
     return 0;
 }

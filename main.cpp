@@ -167,7 +167,7 @@ int BuscarActividadPorId(const vector<Actividades> &actividades, int id) {
 
     for (int i = 0; i < (int)actividades.size(); ++i) {
         if (actividades[i].GetId_Actividad() == id) {
-            return 1; // Encontrada
+            return i; // Encontrada
         }
     }
     return -1; // No encontrada
@@ -190,6 +190,45 @@ bool Estalisteilor(Actividades &actividad, vector<Actividades> &actividades) {
         }
     }
     return true; // Todas las dependencias encontradas
+}
+
+void ExpansionDeDominio(Actividades &actividad) {
+    pid_t pid = fork();
+    if (pid == -1) {
+        cout << "Error al crear el proceso de la actividad " << actividad.GetNombre_Actividad() << endl;
+        return;
+    }
+
+    if (pid == 0) {
+    actividad.SetEstado_Actividad(Estado::Dandole);
+    cout << "se expandió la Actividad " << actividad.GetNombre_Actividad() << " (ID: " << actividad.GetId_Actividad() << ") con teempo de ejecución: " << actividad.GetTiempo() << " ms" << endl;
+    usleep(actividad.GetTiempo() * 1000); //
+
+    cout << "Actividad " << actividad.GetNombre_Actividad() << " (ID: " << actividad.GetId_Actividad() << ") ha sido finiquitadisima (en el hijo!)." << endl;
+    actividad.SetEstado_Actividad(Estado::Finiquitao);
+    _exit(0); // nigerun dayoo
+    }else{
+        actividad.SetEstado_Actividad(Estado::Dandole);
+        waitpid(pid, nullptr, 0);
+        actividad.SetEstado_Actividad(Estado::Finiquitao);
+        cout << "Actividad " << actividad.GetNombre_Actividad() << " (ID: " << actividad.GetId_Actividad() << ") ha sido finiquitadisima (en el padre!)." << endl;
+
+    }
+}
+
+void VacioInfinito(vector<Actividades> &actividades){
+    bool quedanactividades = true;
+
+    while(quedanactividades){
+        quedanactividades = false;
+        for(Actividades &actividad : actividades){
+
+            if(actividad.GetEstado_Actividad() == Estado::Calmao && Estalisteilor(actividad, actividades)){
+                ExpansionDeDominio(actividad);
+                quedanactividades = true;
+            }
+        }
+    }
 }
 
 int main(){
@@ -237,6 +276,11 @@ if (pid == 0) {
 
     cout << "El proceso hijo ha terminao." << endl;
 }
+
+cout << endl;
+cout << "===== EJECUTANDO ACTIVIDAD =====" << endl;
+
+VacioInfinito(actividades);
 
 
     return 0;

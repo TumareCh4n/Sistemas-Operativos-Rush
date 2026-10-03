@@ -3,13 +3,23 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <unistd.h>
+#include <sys/wait.h>
 using namespace std;
+
+enum class Estado {
+    Calmao,
+    Dandole,
+    Finiquitao,
+    Aborto
+};
 
 class Actividades{
         private:
        string Nombre_Actividad;
        int Id_Actividad;
        int Tiempo;
+       Estado Estado_Actividad;
        vector<int> Dependencias;
 
        public: 
@@ -18,6 +28,7 @@ class Actividades{
        this -> Id_Actividad = Id_Actividad;
        this -> Tiempo = Tiempo;
        this -> Dependencias = Dependencias;
+       this -> Estado_Actividad = Estado::Calmao;
        }
 
        void SetNombre_Actividad (string NewNombre_Actividad) {
@@ -29,6 +40,10 @@ class Actividades{
        void SetTiempo (int NewTiempo) {
        Tiempo = NewTiempo;
        }
+       void SetEstado_Actividad (Estado NewEstado_Actividad) {
+       Estado_Actividad = NewEstado_Actividad;
+       }
+
        void SetDependencias (vector<int> NewDependencias) {
        Dependencias = NewDependencias;
        }
@@ -36,7 +51,7 @@ class Actividades{
        string GetNombre_Actividad() {
        return Nombre_Actividad;
        }
-       int GetId_Actividad() {
+       int GetId_Actividad() const { //si no pongo ese const todo se va ala mierda
        return Id_Actividad;
        }
        int GetTiempo() {
@@ -45,6 +60,10 @@ class Actividades{
        vector<int> GetDependencias() {
        return Dependencias;
        }
+
+       Estado GetEstado_Actividad() {
+         return Estado_Actividad;
+         }
 
        void PrintWeas() {
        cout << " Nombre_Actividad : " <<Nombre_Actividad << endl;
@@ -94,6 +113,7 @@ vector<int> desglosardependenciasinador(string dependencias) {
     return resultao;
 }
 
+
 void LeerArchivo(ifstream &archivo, vector<Actividades> &actividades) {
 
     string linea;
@@ -122,27 +142,55 @@ void LeerArchivo(ifstream &archivo, vector<Actividades> &actividades) {
         dependencias = quitarespaciosinador(dependencias);
 
         int id_actividad = stoi(id); //si no pongo el stoi me tira error, así que mejor lo dejo xD
+
         int tiempo_actividad = 0;
 
         if (tiempo.empty()) {
-        tiempo_actividad = Random();
+            tiempo_actividad = Random();
         }else{
-        tiempo_actividad = stoi(tiempo); //ah coño, claro, el texto es string, makes sense
+            tiempo_actividad = stoi(tiempo); //ah coño, claro, el texto es string, makes sense
+        }
 
-        // Convertir dependencias de string a vector<int> 
-        vector<int> dependencias_actividad = desglosardependenciasinador(dependencias); 
-        // Crear actividad 
-        Actividades actividad( nombre, id_actividad, tiempo_actividad, dependencias_actividad ); 
-        // Guardarla en el vector 
+        // Convertir dependencias de string a vector<int>
+        vector<int> dependencias_actividad = desglosardependenciasinador(dependencias);
+
+        // Crear actividad
+        Actividades actividad(nombre, id_actividad, tiempo_actividad, dependencias_actividad);
+
+        // Guardarla en el vector
         actividades.push_back(actividad);
     }
+}
 
 
+int BuscarActividadPorId(const vector<Actividades> &actividades, int id) {
+
+    for (int i = 0; i < (int)actividades.size(); ++i) {
+        if (actividades[i].GetId_Actividad() == id) {
+            return 1; // Encontrada
         }
     }
+    return -1; // No encontrada
+}
 
+bool Estalisteilor(Actividades &actividad, vector<Actividades> &actividades) {
+    
+    if (actividad.GetDependencias().empty()) {
+        return true; // No tiene dependencias, por lo tanto está listo
+    }
 
+    for (int id : actividad.GetDependencias()) {
 
+        int posicion = BuscarActividadPorId(actividades, id);
+        if (posicion == -1) {
+            return false; // Dependencia no encontrada
+        }
+        if(actividades[posicion].GetEstado_Actividad() != Estado::Finiquitao) {
+            return false; // Dependencia no finalizada
+        }
+    }
+    return true; // Todas las dependencias encontradas
+}
 
 int main(){
     ifstream planes("plan.txt");
@@ -161,6 +209,34 @@ int main(){
         
     }
 
+    cout << endl;
+
+cout << "===== PRUEBA FORK v: 1.0 =====" << endl;
+
+pid_t pid = fork();
+
+if (pid == -1) {
+    cout << "Error al crear el proceso hijo." << endl;
+    return 1;
+}
+
+if (pid == 0) {
+
+    cout << "Soy el proceso hijo." << endl;
+    cout << "Mi PID es: " << getpid() << endl;
+
+    return 0;
+
+} else {
+
+    cout << "Soy el proceso padre." << endl;
+    cout << "Mi PID es: " << getpid() << endl;
+    cout << "El PID de mi hijo es: " << pid << endl;
+
+    waitpid(pid, nullptr, 0);
+
+    cout << "El proceso hijo ha terminao." << endl;
+}
 
 
     return 0;
